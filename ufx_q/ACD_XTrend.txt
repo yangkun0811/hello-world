@@ -1,0 +1,207 @@
+//------------------------------------------------------------------------
+// 简称: GS_ACD_XTrend
+// 名称: 
+// 类别: 公式应用 
+// 类型: 用户应用
+// 输出: 
+//------------------------------------------------------------------------
+Params
+	Numeric NewDayStartTime	(2100);
+	Numeric NextDayStartTime(900); 
+	Numeric NextDayEndTime	(1445);
+	Numeric MiddleStartTime	(0);
+	Numeric MiddleEndTime	(200);
+	Numeric ObvStartTime	(2100);
+	Numeric ObvEndTime	    (2345);
+	Numeric WaitTime	(10);
+	Numeric SpaceLimit	(15);
+	Numeric ADiv		(7);
+	Numeric BDiv		(2);
+	Numeric PlaceNum	(1);
+	Numeric SlippedPrice(5); 
+
+Vars
+	Numeric TimeBase(10000);
+	NumericSeries A(2); 
+	NumericSeries NewHH;
+	NumericSeries NewLL;
+	NumericSeries HHLLInterval;
+	NumericSeries HH;
+	NumericSeries LL;
+	NumericSeries StoppedLong;
+	NumericSeries StoppedShrt;
+	Numeric LongSignal(1);
+	Numeric ShrtSignal(1);
+	Numeric i;
+	NumericSeries CycleHi;
+	NumericSeries CycleLo;
+	Numeric HuaJia(0); 
+	Numeric OpenPosTime(0);
+	Numeric CurTime(0);
+		
+Begin
+		HuaJia = MinMove*PriceScale*SlippedPrice;
+		Commentary("HuaJia:"+Text(HuaJia));
+
+		If(BarStatus == 0)
+        {
+                HH = Open;
+                LL = Open;
+				StoppedLong=0;
+				StoppedShrt=0;
+        }
+        Else
+        {
+				CurTime = time*TimeBase;
+                StoppedLong=StoppedLong[1];
+                StoppedShrt=StoppedShrt[1];
+			
+				If(CurTime == NewDayStartTime)
+                {
+					HH = Open;
+					LL = Open;
+					A  			 = (NewHH-NewLL)/ADiv;
+					HHLLInterval = (NewHH-NewLL)/BDiv;
+                    NewHH = Open;
+                    NewLL = Open;
+					StoppedLong=0;
+					StoppedShrt=0;
+					LongSignal=0;
+					ShrtSignal=0;
+					Return;
+                }
+
+
+				// 观察窗更新最大值最小值			
+                If(CurTime>=ObvStartTime && CurTime<=ObvEndTime) 
+                {
+					If(Low < LL) 		LL = Low;
+					If(High > HH) 		HH = High;
+                }Else{
+					If(Low < NewLL) 	NewLL = Low;
+					If(High > NewHH) 	NewHH = High;				
+				} 
+
+
+				PlotNumeric("HH+A",HH+A,0,Red);
+				PlotNumeric("LL-A",LL-A,0,Green);
+				PlotNumeric("HH",HH,0,DarkRed);
+				PlotNumeric("LL",LL,0,DarkGreen);
+				
+				CycleHi=HighestFC(H,WaitTime);
+				CycleLo=LowestFC(L,WaitTime);
+				
+				PlotNumeric("CycleHi",CycleHi,0,DarkRed);
+				PlotNumeric("CycleLo",LL,0,DarkGreen);
+				
+				
+				//多头
+				for  i = 1 To WaitTime
+				{
+					if(C[i]>=HH[1]+A && LongSignal==1){LongSignal=1;}
+					else{LongSignal=0;}
+				}
+
+				for  i = 1 To WaitTime
+				{
+					if(C[i]<=LL[1]-A && ShrtSignal==1){ShrtSignal=1;}
+					else{ShrtSignal=0;}
+				}
+				Commentary("LongSignal:"+Text(LongSignal));
+				Commentary("ShrtSignal:"+Text(ShrtSignal));
+				Commentary("StoppedLong:"+Text(StoppedLong));
+				Commentary("StoppedShrt:"+Text(StoppedShrt));
+				Commentary("CycleHi[1]:"+Text(CycleHi[1]));
+				Commentary("CycleLo[1]:"+Text(CycleLo[1]));
+				Commentary("NewHH:"+Text(NewHH));
+				Commentary("NewLL:"+Text(NewLL));
+				Commentary("HH:"+Text(HH));
+				Commentary("LL:"+Text(LL));
+				Commentary("A:"+Text(A));
+				
+				// 开仓
+				If(CurTime > ObvEndTime || (CurTime>=NextDayStartTime && CurTime < ObvStartTime))
+				{
+					if(StoppedLong!=1 && LongSignal==1) 
+					{
+						// 涨太多不开仓
+						if(CycleHi[1]-(HH[1]+A)>SpaceLimit) 
+						{
+							StoppedLong=1;
+						}
+						else
+						{
+							Buy(PlaceNum,O+HuaJia);
+							OpenPosTime = Time;
+						}
+					}
+				
+				
+					If(StoppedShrt!=1 && ShrtSignal==1) 
+					{
+						// 跌太多不开仓
+						if((LL[1]-A)-CycleLo[1]>SpaceLimit)
+						{ 
+							StoppedShrt=1;
+						}
+						else
+						{	
+							SellShort(PlaceNum,O-HuaJia);  
+							OpenPosTime = Time;
+						}
+					
+					}
+				}
+
+				// 止损1(开盘区间较小)
+				// 单侧止损
+				IF (HH-LL<=HHLLInterval)
+				{
+					If(MarketPosition ==1 && L[1]<= LL[1] - A  && ContractProfit[1] <=0 && CurTime != OpenPosTime*TimeBase)
+					{			
+						Sell(PlaceNum,O- HuaJia);
+						StoppedLong=1;
+						Commentary("Sell,HH-LL<=HHLLInterval");
+					}
+				
+					If(MarketPosition ==-1 && H[1]>= HH[1] + A  && ContractProfit[1] <=0 && CurTime != OpenPosTime*TimeBase)
+					{
+						BuyToCover(PlaceNum,O+HuaJia);
+						StoppedShrt=1;
+						Commentary("BuyToCover,HH-LL<=HHLLInterval");
+					}
+				}
+				// 止损2(开盘区间较大)
+				// 对侧止损	
+				Else
+				{
+
+					If(MarketPosition ==1 && L[1]<= HH[1] - A  && ContractProfit[1]<=0 && CurTime != OpenPosTime*TimeBase)
+					{
+						Sell(PlaceNum,O- HuaJia);
+						StoppedLong=1;
+						Commentary("sell,HH-LL>HHLLInterval");
+					}
+				
+					If(MarketPosition ==-1 && H[1]>= LL[1] + A  && ContractProfit[1]<=0 && CurTime != OpenPosTime*TimeBase)
+					{
+						BuyToCover(PlaceNum,O+HuaJia);
+						StoppedShrt=1;
+						Commentary("BuyToCover,HH-LL>HHLLInterval");
+					}
+				}
+							
+        }
+
+
+		
+End
+
+
+//------------------------------------------------------------------------
+// 编译版本	GS2010.12.08
+// 用户版本	2013/02/01 13:40
+// 版权所有	qin2012
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TrabeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------

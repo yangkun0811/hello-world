@@ -1,0 +1,184 @@
+//------------------------------------------------------------------------
+// 简称: CX_BOLL
+// 名称:
+// 类别: 公式应用 
+// 类型: 用户应用 
+// 输出:
+//------------------------------------------------------------------------
+Params 
+ Numeric Length(18); 
+ Numeric Offset(2);
+ Numeric PlaceNum(1); 
+ Numeric NotBeforeTime(925);
+ Numeric NotAfterTime(1450); 
+ Numeric StopLossPoint(14);
+ Numeric StopProfitLimitPoint(20);
+ Numeric StopProfitPoint(10);
+ Numeric bollwidth(9);
+ Numeric WRLength(6);
+ Numeric OverSold(16) ;
+ Numeric OverBought(90) ;
+ Numeric SlipPoint(1);
+ 
+Vars
+ NumericSeries UpLine;    //上轨
+ NumericSeries DownLine;   //下轨
+ NumericSeries MidLine;   //中间线
+ NumericSeries Band;
+ NumericSeries StopLossLimitNum(0);
+ NumericSeries isReverseThrough(0);
+ NumericSeries YesterdayClosePrice(0);
+ Numeric Timefactor(10000);
+ Numeric Hourfactor(100);
+ NumericSeries WRValue;
+ 
+Begin
+
+	 WRValue = PercentR(WRLength);	 
+	 MidLine = AverageFC(Close[1],Length);
+	 Band = StandardDev(Close[1],Length,2);
+	 UpLine = MidLine + Offset * Band;
+	 DownLine = MidLine - Offset * Band;
+	 PlotNumeric("UpLine",UpLine);
+	 PlotNumeric("DownLine",DownLine);
+	 PlotNumeric("MidLine",MidLine);
+	 // PlotNumeric("Band",Band); 
+
+	//Commentary("WRValue:"+Text(WRValue));
+	//Commentary("MidLine:"+Text(MidLine));
+	//Commentary("Band:"+Text(Band));
+	//Commentary("UpLine:"+Text(UpLine));
+	//Commentary("DownLine:"+Text(DownLine));
+	//Commentary("GV3:"+Text(GetGlobalVar(3)));
+	 if(Date != Date[1]){
+		 //isReverseThrough = 0;
+		 YesterdayClosePrice = Close[1];
+		 StopLossLimitNum = 50;
+		 SetGlobalVar(1,-1);
+		 SetGlobalVar(2,-1);
+		 //Commentary("Date:"+Text(Date));
+	 }else{
+		StopLossLimitNum = StopLossLimitNum[1];
+	 }
+
+	 //Commentary("test:"+IIFString(Close[1] >= UpLine[1],"True","False"));
+	 
+ If((Time*Timefactor) >= NotBeforeTime && (Time*Timefactor) < NotAfterTime){
+
+   // 空头开仓, 突破上轨，跌线开空, 信号闪烁
+   If(MarketPosition == 0 && Close[1] >= UpLine[1]&&UpLine[1]-DownLine[1]>=bollwidth){
+		SellShort(PlaceNum,Open-SlipPoint);
+		SetGlobalVar(3,-1);
+		//Commentary("空头开仓");
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":空头开仓:"+Text(Date)+":"+Text(Time));
+   }
+  
+   // 多头开仓,突破下轨，多线开多
+   If(MarketPosition == 0 && Close[1] <= DownLine[1]&&UpLine[1]-DownLine[1]>=bollwidth){
+		Buy(PlaceNum,Open+SlipPoint);
+		SetGlobalVar(3,1);
+		//Commentary("多头开仓");
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":多头开仓:"+Text(Date)+":"+Text(Time));
+   }
+  
+   //Commentary("GV1:"+Text(GetGlobalVar(1)));
+   //Commentary("GV2:"+Text(GetGlobalVar(2)));
+   //Commentary("GV3:"+Text(GetGlobalVar(3)));
+   //Commentary("EntryPrice:"+Text(EntryPrice));
+   //Commentary("WRValue:"+Text(WRValue));
+ 
+   // 盘中止损反手 //&& WRValue[1] <= OverSold // && WRValue[1] >= OverBought
+   if((GetGlobalVar(3) < 0 && GetGlobalVar(1)==Hourfactor*Hour()+Minute()) || (GetGlobalVar(1)!=Hourfactor*Hour()+Minute() && GetGlobalVar(3) > 0 && (EntryPrice - Low[1]) >= StopLossPoint && StopLossLimitNum >0 && WRValue <= OverSold)){
+		StopLossLimitNum = StopLossLimitNum-1;
+		SetGlobalVar(1,Hourfactor*Hour()+Minute());
+		SellShort(PlaceNum, Max(Low-SlipPoint,Min(O-SlipPoint,(EntryPrice-StopLossPoint-SlipPoint))));
+		SetGlobalVar(3,-1);
+		//Commentary("做多止损反手:"+Text(StopLossLimitNum));
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":做多止损反手:"+Text(Date)+":"+Text(Time));
+		// return;
+   }else if((GetGlobalVar(3) > 0 && GetGlobalVar(1)==Hourfactor*Hour()+Minute()) ||(GetGlobalVar(1)!=Hourfactor*Hour()+Minute() && GetGlobalVar(3) < 0 && (High[1] - EntryPrice) >= StopLossPoint && StopLossLimitNum >0 && WRValue >= OverBought)){
+		Buy(PlaceNum, Min(High+SlipPoint,Max(O+SlipPoint,(EntryPrice+StopLossPoint+SlipPoint))));
+		StopLossLimitNum = StopLossLimitNum-1;
+		SetGlobalVar(1,Hourfactor*Hour()+Minute());
+		SetGlobalVar(3,1);
+		Commentary("做空止损反手:"+Text(StopLossLimitNum));
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":做空止损反手:"+Text(Date)+":"+Text(Time));
+		//return;
+   }
+   // 止盈
+   if(GetGlobalVar(3) > 0 && High[1] >= UpLine[1] && WRValue[1] <= OverSold && (High[1] - EntryPrice) >= StopProfitPoint){
+		Sell(PlaceNum,Max(Low-SlipPoint,Min(O-SlipPoint,(EntryPrice+StopProfitPoint-SlipPoint))));
+		isReverseThrough = 0;
+		SetGlobalVar(3,0);
+		//Commentary("做多止盈");
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":做多止盈:"+Text(Date)+":"+Text(Time));
+		return;
+   }
+  
+   if(GetGlobalVar(3) < 0 && Low[1] <= DownLine[1] && WRValue[1] >= OverBought && (EntryPrice - Low[1]) >= StopProfitPoint){
+		BuyToCover(PlaceNum,Min(High+SlipPoint,Max(O+SlipPoint,(EntryPrice-StopProfitPoint+SlipPoint))));
+		isReverseThrough = 0;
+		SetGlobalVar(3,0);
+		//Commentary("做空止盈");
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":做空止盈:"+Text(Date)+":"+Text(Time));  
+		return;
+   }
+   //Commentary("允许止盈:"+Text(isReverseThrough));
+   //Commentary("EntryPrice:"+Text(EntryPrice));
+  
+   // 止盈反手
+   if(isReverseThrough == 0 && GetGlobalVar(3) > 0 && Close[1] > UpLine && ((High - EntryPrice) > StopProfitLimitPoint)){
+		isReverseThrough = 1;
+		//Commentary("做多允许止盈");
+   }
+   if(isReverseThrough == 0 && GetGlobalVar(3) < 0 && Close[1] < DownLine && ((EntryPrice - Low) > StopProfitLimitPoint)){
+		isReverseThrough = 1;
+		//Commentary("做空允许止盈");
+   }
+   If((GetGlobalVar(3) < 0 && GetGlobalVar(2)==Hourfactor*Hour()+Minute()) ||(GetGlobalVar(2)!=Hourfactor*Hour()+Minute() && isReverseThrough == 1 && GetGlobalVar(3) > 0 && (High[1] - EntryPrice) > StopProfitLimitPoint && Low <= MidLine)){
+		SellShort(PlaceNum, Max(Low-SlipPoint,Min(O-SlipPoint,(MidLine-SlipPoint))));
+		isReverseThrough = 0;
+		SetGlobalVar(2,Hourfactor*Hour()+Minute());
+		SetGlobalVar(3,-1);
+		//Commentary("做多止盈反手");
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":做多止盈反手:"+Text(Date)+":"+Text(Time));
+		//return; test
+   } else if((GetGlobalVar(3) > 0 && GetGlobalVar(2)==Hourfactor*Hour()+Minute()) ||(GetGlobalVar(2)!=Hourfactor*Hour()+Minute() && isReverseThrough == 1 && GetGlobalVar(3) < 0 && (EntryPrice - Low[1]) > StopProfitLimitPoint && High >= MidLine)){
+		Buy(PlaceNum, Min(High+SlipPoint,Max(O+SlipPoint,(MidLine+SlipPoint))));
+		isReverseThrough = 0;
+		SetGlobalVar(2,Hourfactor*Hour()+Minute());
+		SetGlobalVar(3,1);
+		//Commentary("做空止盈反手");
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":做空止盈反手:"+Text(Date)+":"+Text(Time));
+		//return;  test
+   }
+ }
+ // Commentary("currenttime:"+Text(Timefactor*Time));
+ 
+ // 收盘平仓
+ /*
+ if((Time*Timefactor) >= NotAfterTime){
+		Sell(PlaceNum,Open-SlipPoint);
+		BuyToCover(PlaceNum,Open+SlipPoint);
+		Commentary("收盘平仓");
+		SetGlobalVar(3,0);
+		//FileAppend("C:\\CXTradeBackUp\\CX_NEW_BOLL_LOG"+SymbolType()+".txt",SymbolType()+":收盘平仓:"+Text(Date)+":"+Text(Time)); 
+ }
+ */
+ 
+End
+ 
+//------------------------------------------------------------------------
+// 编译版本 GS2010.12.08
+// 用户版本 2014/10/23 15:55
+// 版权所有 gs2011
+// 更改声明 TradeBlazer Software保留对TradeBlazer平台
+//   每一版本的TrabeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------
+//------------------------------------------------------------------------
+// 编译版本 GS2010.12.08
+// 用户版本 2014-11-03 13:10:56
+// 版权所有 cx
+// 更改声明 TradeBlazer Software保留对TradeBlazer平台
+//   每一版本的TrabeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------

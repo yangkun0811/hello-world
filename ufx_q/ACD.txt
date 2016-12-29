@@ -1,0 +1,155 @@
+//------------------------------------------------------------------------
+// 简称: A_ACD
+// 名称: ACD 商品含夜盘信息
+// 类别: 公式应用
+// 类型: 用户应用
+// 输出:
+//------------------------------------------------------------------------
+
+Params
+Numeric stoplossfactor(5);
+Numeric NewDayStartTime(900);
+Numeric ObvStartTime(900);
+Numeric ObvWindow(3);
+Numeric PlaceNum(1);
+Numeric EndTradeTime(1459);
+Numeric SlippedPrice(5);
+Numeric Lencnt(2);
+	
+Vars
+NumericSeries A(1);
+NumericSeries DClose;
+NumericSeries DHigh;
+NumericSeries DLow;
+NumericSeries HH;
+NumericSeries LL;
+NumericSeries StoppedLong;
+NumericSeries StoppedShrt;
+Numeric Timebase(10000); 
+NumericSeries ObvStartBarCnt(0);
+Numeric HuaJia;
+NumericSeries laftentry(9999);
+NumericSeries hiaftentry(0);
+BoolSeries rfilter(false);
+	
+Begin
+
+HuaJia = MinMove*PriceScale*SlippedPrice;
+Commentary("MinMove:"+Text(MinMove));
+Commentary("PriceScale:"+Text(PriceScale));
+If(BarStatus == 0)
+{
+	DClose = Open;
+	DHigh = Open;
+	DLow = Open;
+	HH = Open;
+	LL = Open;
+	
+}Else{
+
+	if (marketposition != 0)
+	{
+		if (H > hiaftentry) {hiaftentry = H;}
+		if (L < laftentry)  {laftentry  = L;}
+	}
+	else{
+		hiaftentry = 0;
+		laftentry  = 99999;
+	}
+
+	If(time*Timebase==ObvStartTime){
+		ObvStartBarCnt = CurrentBar;
+	}
+	
+	If(time*Timebase == NewDayStartTime)
+	{
+		A     		= (DHigh-DLow)/stoplossfactor;
+		DHigh 	   	=  Open;
+		DLow  		=  Open;
+		HH    		=  Open;
+		LL    		=  Open;
+		StoppedLong	= 0;
+		StoppedShrt	= 0;
+		hiaftentry  = 0;
+		laftentry   = 99999;
+		Return;
+	}
+
+	if(MarketPosition !=0 && Time*Timebase>=EndTradeTime){
+		StoppedLong	= 1;
+		StoppedShrt	= 1;		
+	}
+
+	
+	If(CurrentBar>=ObvStartBarCnt && CurrentBar<=ObvStartBarCnt+ObvWindow) 
+	{
+		If(Low < LL)  LL = Low; 
+		If(High > HH) HH = High;
+	}else{
+		If(Low < DLow)  DLow = Low; 
+		If(High > DHigh) DHigh = High;	
+	}
+	
+	rfilter=(HH-LL)>Lencnt*A;  //单根K线波动超过A点，条件启动
+	//多头开仓
+	If(CurrentBar>ObvStartBarCnt+ObvWindow && StoppedLong!=1 && MarketPosition ==0 && rfilter) //  && time*Timebase<=DayEndTime
+	{
+		if(O[1]<= HH && C[1]>=HH && C[1]<=HH+A){
+			Buy(PlaceNum,O+HuaJia);
+			Commentary("LONGOPEN");
+		}
+	} 
+
+	//空头开仓
+	If(CurrentBar>ObvStartBarCnt+ObvWindow && StoppedShrt!=1 && MarketPosition ==0 && rfilter) // && time*Timebase<=DayEndTime 
+	{
+		if(O[1]>= LL && C[1]<=LL && C[1]>=LL-A){
+			SellShort(PlaceNum,O-HuaJia);
+			Commentary("SHORTOPEN");
+		}
+	}
+ 
+	 //止损
+	 If(MarketPosition == 1)
+	 {
+		if(hiaftentry<=HH+A && O<=LL){
+		   Sell(PlaceNum,O-HuaJia);
+		   StoppedLong=1;
+		   Commentary("STOPLONG");
+		}else if(hiaftentry>HH+A && O<HH){
+		   Sell(PlaceNum,O-HuaJia);
+		   StoppedLong=1;
+		   Commentary("STOPLONG");			
+		}
+	 }
+	 
+	 If(MarketPosition ==-1)
+	 {
+		// 止盈
+		if(laftentry>=LL-A && O>=HH){
+		   BuyToCover(PlaceNum,O-HuaJia);
+		   StoppedShrt=1;
+		}else if(laftentry<LL-A && O>LL){
+		   BuyToCover(PlaceNum,O-HuaJia);
+		   StoppedShrt=1;	
+		}
+	 }
+
+}
+
+// If(CurrentBar>ObvStartBarCnt+ObvWindow)
+// {
+	PlotNumeric("HH0",HH,0,DarkRed);
+	PlotNumeric("LL0",LL,0,DarkGreen);
+	PlotNumeric("HH",HH+A,0,Red);
+	PlotNumeric("LL",LL-A,0,Green);
+// }
+
+End
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2016/11/17 13:15:36
+// 版权所有	yangkunwjasset
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------

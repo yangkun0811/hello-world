@@ -1,0 +1,3 @@
+cd /tmp && /usr/bin/taskset -c 5 /q/l32/daemonize -e /tmp/stderr.osgz -o /tmp/stdout.osgz -p /tmp/pidfile.osgz /q/l32/q oslib.q_ -P 15 -c 45 140 -g 1 -p 9010 -conf /q/etc/osgz.conf -code 'qload each ("handler.q";"ohst2.q");init[];start_timer[];'
+
+#cd /tmp/ && runq -P 15 -p 7600 -c 65 140 -tick 250 -conf /q/etc/osufx.conf -code 'qload "handler.q";init[];qload "ohst2.q";start_timer[];'
